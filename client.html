@@ -41,7 +41,6 @@
 
     ws.onmessage = function (event) {
     console.log('Received message:', event.data);
-    // Handle incoming messages from the server
     const data = JSON.parse(event.data);
     switch (data.action) {
       case "gameStarted":
