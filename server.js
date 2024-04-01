@@ -57,28 +57,6 @@ wss.on("connection", function connection(ws) {
           game.player1.send(JSON.stringify({ action: "startGame" }));
           game.player2.send(JSON.stringify({ action: "startGame" }));
         }
-      } else if (data.action === "shoot") {
-        const { row, col } = data.coordinates;
-        const opponent = ws === game.player1 ? game.player2 : game.player1;
-        const result = checkHit(row, col, game.opponentBoard);
-        if (result === "hit") {
-          game.player1.send(
-            JSON.stringify({ action: "hit", coordinates: { row, col } })
-          );
-          game.player2.send(
-            JSON.stringify({ action: "opponentHit", coordinates: { row, col } })
-          );
-        } else if (result === "miss") {
-          game.player1.send(
-            JSON.stringify({ action: "miss", coordinates: { row, col } })
-          );
-          game.player2.send(
-            JSON.stringify({
-              action: "opponentMiss",
-              coordinates: { row, col },
-            })
-          );
-        }
       }
     }
   });
