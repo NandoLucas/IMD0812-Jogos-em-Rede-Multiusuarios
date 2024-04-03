@@ -51,11 +51,49 @@ wss.on("connection", function connection(ws) {
           );
         }
       } else if (data.action === "finalizeShips") {
+        const playerLimites =
+          game.player1 === ws ? game.limitesJogador1 : game.limitesJogador2;
+        // retorna a quantidade de navios a serem posicionados, quando for 0, o jogo pode iniciar
+        const remainingShips = Object.values(playerLimites).reduce(
+          (acc, val) => acc + val,
+          0
+        );
+
+        if (remainingShips > 0) {
+          ws.send(
+            JSON.stringify({
+              action: "error",
+              message: "Você ainda não posicionou todos os navios.",
+            })
+          );
+          return;
+        }
+
         game.readyPlayers++;
         if (game.readyPlayers === 2) {
           game.status = "playing";
+          game.currentPlayer =
+            Math.random() < 0.5 ? game.player1 : game.player2; // Determina aleatoriamente o primeiro jogador
           game.player1.send(JSON.stringify({ action: "startGame" }));
           game.player2.send(JSON.stringify({ action: "startGame" }));
+        }
+      }
+    } else if (game && game.status === "playing") {
+      const data = JSON.parse(message);
+      if (data.action === "shoot") {
+        const { row, col } = data.coordinates;
+        const currentPlayer = game.currentPlayer;
+        const attackingPlayer = ws;
+        if (attackingPlayer === currentPlayer) {
+          checkHit(row, col, game); // Chama a função para verificar o acerto
+        } else {
+          // Se não for o jogador da vez, envie uma mensagem de erro
+          ws.send(
+            JSON.stringify({
+              action: "error",
+              message: "Não é sua vez de atacar.",
+            })
+          );
         }
       }
     }
@@ -73,8 +111,8 @@ wss.on("connection", function connection(ws) {
 });
 
 function startNewGame(player1, player2) {
-  const gameBoardPlayer1 = Array.from(Array(10), () => Array(10).fill(0)); // Novo tabuleiro para o jogador 1
-  const gameBoardPlayer2 = Array.from(Array(10), () => Array(10).fill(0)); // Novo tabuleiro para o jogador 2
+  const gameBoardPlayer1 = Array.from(Array(10), () => Array(10).fill(0));
+  const gameBoardPlayer2 = Array.from(Array(10), () => Array(10).fill(0));
 
   const game = {
     player1: player1,
@@ -84,20 +122,20 @@ function startNewGame(player1, player2) {
     player1Board: gameBoardPlayer1,
     player2Board: gameBoardPlayer2,
     limitesJogador1: {
-      1: 1, // Limite para o tipo 1: 1 navio
-      2: 2, // Limite para o tipo 2: 2 navios
-      3: 3, // Limite para o tipo 3: 3 navios
-      4: 4, // Limite para o tipo 4: 4 navios
-      5: 3, // Limite para o tipo 5: 3 navios
+      1: 1,
+      2: 2,
+      3: 3,
+      4: 4,
+      5: 3,
     },
     limitesJogador2: {
-      1: 1, // Limite para o tipo 1: 1 navio
-      2: 2, // Limite para o tipo 2: 2 navios
-      3: 3, // Limite para o tipo 3: 3 navios
-      4: 4, // Limite para o tipo 4: 4 navios
-      5: 3, // Limite para o tipo 5: 3 navios
+      1: 1,
+      2: 2,
+      3: 3,
+      4: 4,
+      5: 3,
     },
-    opponentBoard: [], // tabuleiro do oponente, usado para mostrar os tiros
+    currentPlayer: player1, // jogador atual
   };
 
   jogosAtivos.push(game);
@@ -120,14 +158,11 @@ function fimJogo(game) {
 
 function posicionarNavio(shipType, gameBoard, jogador, limites) {
   const shipSize = getTamNavio(shipType);
-  const orientation = Math.floor(Math.random() * 2); // 0 para horizontal, 1 para vertical
+  const orientation = Math.floor(Math.random() * 2);
 
-  // Verificar se o limite para este tipo de navio foi atingido para o jogador atual
   if (limites[shipType] <= 0) {
-    // Se o limite foi atingido, retorne uma mensagem informando que o limite foi excedido
     return { error: "Limite de navios para este tipo excedido" };
   } else {
-    // Diminuir o contador para este tipo de navio para o jogador atual
     limites[shipType]--;
   }
 
@@ -148,13 +183,11 @@ function posicionarNavio(shipType, gameBoard, jogador, limites) {
       const row = orientation === 1 ? coordinates.row + i : coordinates.row;
       const col = orientation === 0 ? coordinates.col + i : coordinates.col;
 
-      // Verificar se a posição está dentro do tabuleiro
       if (row >= 10 || col >= 10 || gameBoard[row][col] !== 0) {
         validPosition = false;
         break;
       }
 
-      // Verificar se há navios adjacentes
       if (hasAdjacentShip(row, col, gameBoard)) {
         validPosition = false;
         break;
@@ -162,7 +195,6 @@ function posicionarNavio(shipType, gameBoard, jogador, limites) {
     }
   }
 
-  // Marcar as coordenadas no tabuleiro como ocupadas pelo navio
   for (let i = 0; i < shipSize; i++) {
     const row = coordinates.row + (orientation === 1 ? i : 0);
     const col = coordinates.col + (orientation === 0 ? i : 0);
@@ -174,11 +206,10 @@ function posicionarNavio(shipType, gameBoard, jogador, limites) {
     col: coordinates.col,
     orientation: orientation,
     size: shipSize,
-    jogador: jogador, // Adiciona o jogador à resposta
+    jogador: jogador,
   };
 }
 
-// Função auxiliar para verificar se há navios adjacentes
 function hasAdjacentShip(row, col, gameBoard) {
   const adjacentOffsets = [
     [-1, 0],
@@ -217,4 +248,70 @@ function getTamNavio(shipType) {
     default:
       return 0;
   }
+}
+
+function checkHit(row, col, game) {
+  //define o atacante como player atual definido ao mudar o status para playing
+  const attackingPlayer = game.currentPlayer;
+  // defensor de acordo com o atacante
+  const defendingPlayer =
+    attackingPlayer === game.player1 ? game.player2 : game.player1;
+  // tabuleiro do defensor
+  const defendingPlayerBoard =
+    attackingPlayer === game.player1 ? game.player2Board : game.player1Board;
+
+  if (defendingPlayerBoard[row][col] === 1) {
+    defendingPlayerBoard[row][col] = 2;
+    attackingPlayer.send(
+      JSON.stringify({
+        action: "hit",
+        coordinates: { row, col },
+        player: "player",
+      })
+    );
+    defendingPlayer.send(
+      JSON.stringify({
+        action: "opponentHit",
+        coordinates: { row, col },
+        player: "opponent",
+      })
+    );
+    if (contemNavio(defendingPlayerBoard)) {
+      // Se todos os navios foram afundados, o jogador atual é o vencedor
+      attackingPlayer.send(JSON.stringify({ action: "victory" }));
+      defendingPlayer.send(JSON.stringify({ action: "defeat" }));
+      fimJogo(game);
+      return;
+    }
+  } else {
+    attackingPlayer.send(
+      JSON.stringify({
+        action: "miss",
+        coordinates: { row, col },
+        player: "player",
+      })
+    );
+    defendingPlayer.send(
+      JSON.stringify({
+        action: "opponentMiss",
+        coordinates: { row, col },
+        player: "opponent",
+      })
+    );
+    // Troca a vez do jogador, quando o oponente erra
+    game.currentPlayer = defendingPlayer;
+  }
+}
+// Função que verifica se ainda existem navios no tabuleiro
+function contemNavio(board) {
+  for (let row = 0; row < board.length; row++) {
+    for (let col = 0; col < board[row].length; col++) {
+      if (board[row][col] === 1) {
+        // Se ainda houver pelo menos um navio no tabuleiro, retorna falso
+        return false;
+      }
+    }
+  }
+  // Se nenhum navio for encontrado, retorna verdadeiro
+  return true;
 }

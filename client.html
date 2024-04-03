@@ -17,10 +17,18 @@
       background-color: lightblue;
       border: 1px solid black;
     }
+    .cell.hit {
+      background-color: red;
+    }
+    .cell.miss {
+      background-color: white;
+    }
   </style>
 </head>
 <body>
   <h1>Batalha Naval</h1>
+  <div id="messages">
+  </div>
   <div id="shipSelection" style="display: none;">
     <button data-value="1" onclick="selectShip(this)">QTD: 1. OCUPA: 5<img src="./icones/porta-avioes.png" alt="Porta-aviões" style="width: 50px; height: 50px;"></button>
     <button data-value="2" onclick="selectShip(this)">QTD: 2. OCUPA: 4<img src="./icones/encouracado.png" alt="Encouracado" style="width: 50px; height: 50px;"></button>
@@ -40,31 +48,57 @@
     };
 
     ws.onmessage = function (event) {
-    console.log('Received message:', event.data);
-    const data = JSON.parse(event.data);
-    switch (data.action) {
-      case "gameStarted":
-        displayShipSelection();
-        displayBoard();
-        break;
-      case "startGame":
-        hideShipSelection();
-        displayPlayerBoard();
-        break;
-      case "shipPosition":
-        // Adiciona as coordenadas recebidas aos navios
-        shipCoordinates.push(data.coordinates);
-        // Atualiza o visual do tabuleiro
-        displayShips();
-        break;
-      
-    }
-  };
+      console.log('Received message:', event.data);
+      const data = JSON.parse(event.data);
+      switch (data.action) {
+        case "gameStarted":
+          displayShipSelection();
+          displayBoard();
+          break;
+        case "startGame":
+          hideShipSelection();
+          displayPlayerBoard();
+          break;
+        case "shipPosition":
+          // Adiciona as coordenadas recebidas aos navios
+          shipCoordinates.push(data.coordinates);
+          // Atualiza o visual do tabuleiro
+          displayShips();
+          break;
+        case "hit":
+          markHit(data.coordinates.row, data.coordinates.col);
+          if (data.player === "opponent") {
+            mostrarAction("O oponente acertou um navio! Ele continuará atacando!");
+          } else {
+            mostrarAction("Você acertou um navio inimigo em cheio! Continua atacando!");
+          }
+          break;
+        case "miss":
+          markMiss(data.coordinates.row, data.coordinates.col);
+          if (data.player === "opponent") {
+            mostrarAction("O oponente errou o tiro! Sua vez!");
+          } else {
+            mostrarAction("Você errou o ataque! Vez do Inimigo!");
+          }
+          break;
+        case "victory":
+          mostrarAction("Parabéns! Você venceu!");
+          break;
+        case "defeat":
+          mostrarAction("Você foi derrotado. Boa sorte na próxima!");
+          break;
+        case "error":
+          alert("Erro: " + data.message);
+          break;
+      }
+    };
 
     ws.onclose = function () {
       console.log('Connection closed');
     };
-    
+    function mostrarAction(message) {
+      messages.innerText = message;
+    }
     function displayBoard() {
       const board = document.getElementById('board');
       board.innerHTML = ''; // Limpa o tabuleiro antes de exibir
@@ -79,50 +113,54 @@
         }
       }
     }
+
     function displayShips() {
-        const board = document.getElementById('board');
+      const board = document.getElementById('board');
 
-        shipCoordinates.forEach(ship => {
-            const { row, col, size, orientation } = ship;
-            if (orientation === 0) {
-            for (let i = 0; i < size; i++) {
-                const cell = board.querySelector(`[data-row="${row}"][data-col="${col + i}"]`);
-                cell.style.backgroundColor = 'gray';
-            }
-            } else {
-            for (let i = 0; i < size; i++) {
-                const cell = board.querySelector(`[data-row="${row + i}"][data-col="${col}"]`);
-                cell.style.backgroundColor = 'gray'; 
-            }
-            }
-        });
+      shipCoordinates.forEach(ship => {
+        const { row, col, size, orientation } = ship;
+        if (orientation === 0) {
+          for (let i = 0; i < size; i++) {
+            const cell = board.querySelector(`[data-row="${row}"][data-col="${col + i}"]`);
+            cell.style.backgroundColor = 'gray';
+          }
+        } else {
+          for (let i = 0; i < size; i++) {
+            const cell = board.querySelector(`[data-row="${row + i}"][data-col="${col}"]`);
+            cell.style.backgroundColor = 'gray';
+          }
+        }
+      });
     }
-    document.getElementById('finalizei-navios').addEventListener('click', function() {
-        // Envie uma mensagem WebSocket para o servidor indicando que o jogador finalizou o posicionamento dos navios
-        ws.send(JSON.stringify({ action: 'finalizeShips' }));
+
+    document.getElementById('finalizei-navios').addEventListener('click', function () {
+      // Envie uma mensagem WebSocket para o servidor indicando que o jogador finalizou o posicionamento dos navios
+      ws.send(JSON.stringify({ action: 'finalizeShips' }));
     });
+
     function displayPlayerBoard() {
-        const board = document.getElementById('board');
-  board.innerHTML = ''; // Limpa o tabuleiro antes de exibir
+      const board = document.getElementById('board');
+      board.innerHTML = ''; // Limpa o tabuleiro antes de exibir
 
-  for (let i = 0; i < 10; i++) {
-    for (let j = 0; j < 10; j++) {
-      const cell = document.createElement('div');
-      cell.classList.add('cell');
-      cell.dataset.row = i;
-      cell.dataset.col = j;
-      cell.onclick = function() { // Adiciona ação de clique para atacar
-        attack(cell.dataset.row, cell.dataset.col);
-      };
-      board.appendChild(cell);
+      for (let i = 0; i < 10; i++) {
+        for (let j = 0; j < 10; j++) {
+          const cell = document.createElement('div');
+          cell.classList.add('cell');
+          cell.dataset.row = i;
+          cell.dataset.col = j;
+          cell.onclick = function () { // Adiciona ação de clique para atacar
+            attack(cell.dataset.row, cell.dataset.col);
+          };
+          board.appendChild(cell);
+        }
+      }
     }
-  }
-  }
 
-  function hideShipSelection() {
-    const shipSelection = document.getElementById('shipSelection');
-    shipSelection.style.display = 'none';
-  }
+    function hideShipSelection() {
+      const shipSelection = document.getElementById('shipSelection');
+      shipSelection.style.display = 'none';
+    }
+
     function displayShipSelection() {
       const shipSelection = document.getElementById('shipSelection');
       shipSelection.style.display = 'block'; // Mostra o menu de seleção de navios
@@ -132,6 +170,19 @@
       const shipType = button.dataset.value;
       // Enviar a seleção do tipo de navio para o servidor
       ws.send(JSON.stringify({ action: 'selectShip', shipType: shipType }));
+    }
+    function attack(row, col) {
+      // Envie uma mensagem WebSocket para o servidor indicando o ataque
+      ws.send(JSON.stringify({ action: 'shoot', coordinates: { row: row, col: col } }));
+    }
+    function markHit(row, col) {
+      const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+      cell.classList.add('hit');
+    }
+
+    function markMiss(row, col) {
+      const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+      cell.classList.add('miss');
     }
   </script>
 </body>
